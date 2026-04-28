@@ -4,6 +4,12 @@ import uuid
 from typing import Any, Optional
 from db.schema import get_connection
 
+TESSERACT_TARGET_TYPES = {"memory", "belief", "congress_log", "concept", "tension"}
+
+
+def _clamp_01(value: float) -> float:
+    return max(0.0, min(1.0, value))
+
 
 # ── Memories ──────────────────────────────────────────────────────────────────
 
@@ -248,6 +254,166 @@ def get_recent_congress_logs(limit: int = 10) -> list[dict[str, Any]]:
     return [dict(r) for r in rows]
 
 
+def get_congress_log_by_id(log_id: str) -> Optional[dict[str, Any]]:
+    with get_connection() as conn:
+        row = conn.execute("SELECT * FROM congress_logs WHERE id = ?", (log_id,)).fetchone()
+    return dict(row) if row else None
+
+
+# ── Memory Tesseracts ────────────────────────────────────────────────────────
+
+def insert_memory_tesseract(
+    label: str,
+    cue_terms: list[str],
+    semantic_axis: float,
+    relational_axis: float,
+    temporal_axis: float,
+    epistemic_axis: float,
+    metadata: Optional[dict[str, Any]] = None,
+) -> str:
+    tesseract_id = str(uuid.uuid4())
+    now = time.time()
+    with get_connection() as conn:
+        conn.execute(
+            """INSERT INTO memory_tesseracts
+               (id, label, cue_terms, semantic_axis, relational_axis,
+                temporal_axis, epistemic_axis, metadata, usage_count,
+                created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)""",
+            (
+                tesseract_id,
+                label,
+                json.dumps(cue_terms),
+                _clamp_01(semantic_axis),
+                _clamp_01(relational_axis),
+                _clamp_01(temporal_axis),
+                _clamp_01(epistemic_axis),
+                json.dumps(metadata or {}),
+                now,
+                now,
+            ),
+        )
+        conn.commit()
+    return tesseract_id
+
+
+def update_memory_tesseract(
+    tesseract_id: str,
+    cue_terms: list[str],
+    semantic_axis: float,
+    relational_axis: float,
+    temporal_axis: float,
+    epistemic_axis: float,
+    metadata: Optional[dict[str, Any]] = None,
+) -> Optional[dict[str, Any]]:
+    now = time.time()
+    with get_connection() as conn:
+        row = conn.execute("SELECT id FROM memory_tesseracts WHERE id = ?", (tesseract_id,)).fetchone()
+        if not row:
+            return None
+
+        conn.execute(
+            """UPDATE memory_tesseracts
+               SET cue_terms = ?, semantic_axis = ?, relational_axis = ?,
+                   temporal_axis = ?, epistemic_axis = ?, metadata = ?,
+                   updated_at = ?
+               WHERE id = ?""",
+            (
+                json.dumps(cue_terms),
+                _clamp_01(semantic_axis),
+                _clamp_01(relational_axis),
+                _clamp_01(temporal_axis),
+                _clamp_01(epistemic_axis),
+                json.dumps(metadata or {}),
+                now,
+                tesseract_id,
+            ),
+        )
+        conn.commit()
+
+    return get_memory_tesseract_by_id(tesseract_id)
+
+
+def get_memory_tesseract_by_id(tesseract_id: str) -> Optional[dict[str, Any]]:
+    with get_connection() as conn:
+        row = conn.execute("SELECT * FROM memory_tesseracts WHERE id = ?", (tesseract_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def list_memory_tesseracts(limit: int = 200) -> list[dict[str, Any]]:
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM memory_tesseracts ORDER BY updated_at DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def increment_memory_tesseract_usage(tesseract_id: str, amount: int = 1) -> None:
+    now = time.time()
+    with get_connection() as conn:
+        conn.execute(
+            """UPDATE memory_tesseracts
+               SET usage_count = usage_count + ?, updated_at = ?
+               WHERE id = ?""",
+            (max(1, amount), now, tesseract_id),
+        )
+        conn.commit()
+
+
+def add_memory_tesseract_link(
+    tesseract_id: str,
+    target_type: str,
+    target_id: str,
+    weight: float = 1.0,
+) -> str:
+    normalized_target_type = str(target_type).strip().lower()
+    if normalized_target_type not in TESSERACT_TARGET_TYPES:
+        raise ValueError(
+            f"invalid target_type: {target_type}. allowed: {sorted(TESSERACT_TARGET_TYPES)}"
+        )
+
+    link_id = str(uuid.uuid4())
+    now = time.time()
+    with get_connection() as conn:
+        conn.execute(
+            """INSERT INTO memory_tesseract_links
+               (id, tesseract_id, target_type, target_id, weight, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (link_id, tesseract_id, normalized_target_type, target_id, max(0.0, float(weight)), now),
+        )
+        conn.commit()
+    return link_id
+
+
+def get_memory_tesseract_links(
+    tesseract_id: str,
+    target_type: Optional[str] = None,
+    limit: int = 200,
+) -> list[dict[str, Any]]:
+    query = "SELECT * FROM memory_tesseract_links WHERE tesseract_id = ?"
+    params: list[Any] = [tesseract_id]
+    if target_type:
+        query += " AND target_type = ?"
+        params.append(target_type)
+    query += " ORDER BY weight DESC, created_at DESC LIMIT ?"
+    params.append(limit)
+
+    with get_connection() as conn:
+        rows = conn.execute(query, params).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_memory_tesseract_link_counts() -> dict[str, int]:
+    with get_connection() as conn:
+        rows = conn.execute(
+            """SELECT tesseract_id, COUNT(*) as link_count
+               FROM memory_tesseract_links
+               GROUP BY tesseract_id"""
+        ).fetchall()
+    return {str(r["tesseract_id"]): int(r["link_count"]) for r in rows}
+
+
 # ── Tensions ──────────────────────────────────────────────────────────────────
 
 def upsert_tension(
@@ -301,6 +467,12 @@ def get_tension_for_belief(belief_id: str) -> Optional[dict[str, Any]]:
             "SELECT * FROM tensions WHERE belief_id = ? AND resolved = 0",
             (belief_id,),
         ).fetchone()
+    return dict(row) if row else None
+
+
+def get_tension_by_id(tension_id: str) -> Optional[dict[str, Any]]:
+    with get_connection() as conn:
+        row = conn.execute("SELECT * FROM tensions WHERE id = ?", (tension_id,)).fetchone()
     return dict(row) if row else None
 
 

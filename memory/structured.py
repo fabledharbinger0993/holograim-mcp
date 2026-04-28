@@ -19,6 +19,14 @@ from db.queries import (
     count_archived_since,
     memory_count,
     memory_count_since,
+    insert_memory_tesseract,
+    update_memory_tesseract,
+    get_memory_tesseract_by_id,
+    list_memory_tesseracts,
+    increment_memory_tesseract_usage,
+    add_memory_tesseract_link,
+    get_memory_tesseract_links,
+    get_memory_tesseract_link_counts,
 )
 
 __all__ = [
@@ -42,4 +50,12 @@ __all__ = [
     "count_archived_since",
     "memory_count",
     "memory_count_since",
+    "insert_memory_tesseract",
+    "update_memory_tesseract",
+    "get_memory_tesseract_by_id",
+    "list_memory_tesseracts",
+    "increment_memory_tesseract_usage",
+    "add_memory_tesseract_link",
+    "get_memory_tesseract_links",
+    "get_memory_tesseract_link_counts",
 ]
