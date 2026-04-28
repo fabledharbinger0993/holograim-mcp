@@ -61,6 +61,39 @@ CREATE TABLE IF NOT EXISTS tensions (
     resolved INTEGER DEFAULT 0,
     FOREIGN KEY (belief_id) REFERENCES beliefs(id)
 );
+
+CREATE TABLE IF NOT EXISTS memory_tesseracts (
+    id TEXT PRIMARY KEY,
+    label TEXT NOT NULL,
+    cue_terms TEXT,
+    semantic_axis REAL DEFAULT 0.5,
+    relational_axis REAL DEFAULT 0.5,
+    temporal_axis REAL DEFAULT 0.5,
+    epistemic_axis REAL DEFAULT 0.5,
+    metadata TEXT,
+    usage_count INTEGER DEFAULT 0,
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS memory_tesseract_links (
+    id TEXT PRIMARY KEY,
+    tesseract_id TEXT NOT NULL,
+    target_type TEXT NOT NULL CHECK (target_type IN ('memory', 'belief', 'congress_log', 'concept', 'tension')),
+    target_id TEXT NOT NULL,
+    weight REAL DEFAULT 1.0,
+    created_at REAL NOT NULL,
+    FOREIGN KEY (tesseract_id) REFERENCES memory_tesseracts(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_memory_tesseracts_updated_at
+    ON memory_tesseracts(updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_memory_tesseract_links_tesseract
+    ON memory_tesseract_links(tesseract_id);
+
+CREATE INDEX IF NOT EXISTS idx_memory_tesseract_links_target
+    ON memory_tesseract_links(target_type, target_id);
 """
 
 
