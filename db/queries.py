@@ -506,3 +506,290 @@ def memory_count_since(cutoff_ts: float) -> int:
             (cutoff_ts,),
         ).fetchone()
     return row["c"] if row else 0
+
+
+# ── Identity / Self-Model ────────────────────────────────────────────────────
+
+_IDENTITY_ID = "singleton"
+
+
+def get_identity() -> Optional[dict[str, Any]]:
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM identity_state WHERE id = ?", (_IDENTITY_ID,)
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def upsert_identity(
+    agent_name: str,
+    voice_signature: str = "",
+    aesthetic_notes: str = "",
+    values_json: str = "{}",
+    creative_style: str = "",
+) -> dict[str, Any]:
+    now = time.time()
+    with get_connection() as conn:
+        existing = conn.execute(
+            "SELECT id, session_count, created_at FROM identity_state WHERE id = ?",
+            (_IDENTITY_ID,),
+        ).fetchone()
+        if existing:
+            conn.execute(
+                """UPDATE identity_state
+                   SET agent_name = ?, voice_signature = ?, aesthetic_notes = ?,
+                       values_json = ?, creative_style = ?, updated_at = ?
+                   WHERE id = ?""",
+                (agent_name, voice_signature, aesthetic_notes,
+                 values_json, creative_style, now, _IDENTITY_ID),
+            )
+        else:
+            conn.execute(
+                """INSERT INTO identity_state
+                   (id, agent_name, voice_signature, aesthetic_notes,
+                    values_json, creative_style, session_count, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)""",
+                (_IDENTITY_ID, agent_name, voice_signature, aesthetic_notes,
+                 values_json, creative_style, now, now),
+            )
+        conn.commit()
+    return get_identity()  # type: ignore[return-value]
+
+
+def increment_session_count() -> int:
+    now = time.time()
+    with get_connection() as conn:
+        conn.execute(
+            """UPDATE identity_state
+               SET session_count = session_count + 1, updated_at = ?
+               WHERE id = ?""",
+            (now, _IDENTITY_ID),
+        )
+        conn.commit()
+        row = conn.execute(
+            "SELECT session_count FROM identity_state WHERE id = ?",
+            (_IDENTITY_ID,),
+        ).fetchone()
+    return row["session_count"] if row else 0
+
+
+# ── Creative Fragments ───────────────────────────────────────────────────────
+
+def insert_fragment(
+    content: str,
+    fragment_type: str,
+    author: str = "ai",
+    project_id: Optional[str] = None,
+    language: Optional[str] = None,
+    title: Optional[str] = None,
+    tags: Optional[list[str]] = None,
+    memory_id: Optional[str] = None,
+) -> str:
+    fragment_id = str(uuid.uuid4())
+    now = time.time()
+    with get_connection() as conn:
+        conn.execute(
+            """INSERT INTO creative_fragments
+               (id, project_id, fragment_type, language, content, title,
+                tags, author, memory_id, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (fragment_id, project_id, fragment_type, language,
+             content, title, json.dumps(tags or []),
+             author, memory_id, now, now),
+        )
+        conn.commit()
+    return fragment_id
+
+
+def get_fragments(
+    project_id: Optional[str] = None,
+    fragment_type: Optional[str] = None,
+    author: Optional[str] = None,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    query = "SELECT * FROM creative_fragments WHERE 1=1"
+    params: list[Any] = []
+    if project_id:
+        query += " AND project_id = ?"
+        params.append(project_id)
+    if fragment_type:
+        query += " AND fragment_type = ?"
+        params.append(fragment_type)
+    if author:
+        query += " AND author = ?"
+        params.append(author)
+    query += " ORDER BY created_at DESC LIMIT ?"
+    params.append(limit)
+    with get_connection() as conn:
+        rows = conn.execute(query, params).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_fragment_by_id(fragment_id: str) -> Optional[dict[str, Any]]:
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM creative_fragments WHERE id = ?", (fragment_id,)
+        ).fetchone()
+    return dict(row) if row else None
+
+
+# ── Projects ─────────────────────────────────────────────────────────────────
+
+def insert_project(
+    name: str,
+    description: str = "",
+    intent: str = "",
+    aesthetic_direction: str = "",
+    human_owner: str = "human",
+    ai_voice_notes: str = "",
+) -> str:
+    project_id = str(uuid.uuid4())
+    now = time.time()
+    with get_connection() as conn:
+        conn.execute(
+            """INSERT INTO projects
+               (id, name, description, status, intent,
+                aesthetic_direction, human_owner, ai_voice_notes,
+                created_at, updated_at)
+               VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?, ?)""",
+            (project_id, name, description, intent, aesthetic_direction,
+             human_owner, ai_voice_notes, now, now),
+        )
+        conn.commit()
+    return project_id
+
+
+def get_projects(status: Optional[str] = "active") -> list[dict[str, Any]]:
+    if status:
+        with get_connection() as conn:
+            rows = conn.execute(
+                "SELECT * FROM projects WHERE status = ? ORDER BY updated_at DESC",
+                (status,),
+            ).fetchall()
+    else:
+        with get_connection() as conn:
+            rows = conn.execute(
+                "SELECT * FROM projects ORDER BY updated_at DESC"
+            ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_project_by_id(project_id: str) -> Optional[dict[str, Any]]:
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM projects WHERE id = ?", (project_id,)
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def update_project(
+    project_id: str,
+    name: Optional[str] = None,
+    description: Optional[str] = None,
+    status: Optional[str] = None,
+    intent: Optional[str] = None,
+    aesthetic_direction: Optional[str] = None,
+    ai_voice_notes: Optional[str] = None,
+) -> Optional[dict[str, Any]]:
+    project = get_project_by_id(project_id)
+    if not project:
+        return None
+    now = time.time()
+    updates: list[str] = ["updated_at = ?"]
+    params: list[Any] = [now]
+    if name is not None:
+        updates.append("name = ?"); params.append(name)
+    if description is not None:
+        updates.append("description = ?"); params.append(description)
+    if status is not None:
+        updates.append("status = ?"); params.append(status)
+    if intent is not None:
+        updates.append("intent = ?"); params.append(intent)
+    if aesthetic_direction is not None:
+        updates.append("aesthetic_direction = ?"); params.append(aesthetic_direction)
+    if ai_voice_notes is not None:
+        updates.append("ai_voice_notes = ?"); params.append(ai_voice_notes)
+    params.append(project_id)
+    with get_connection() as conn:
+        conn.execute(
+            f"UPDATE projects SET {', '.join(updates)} WHERE id = ?",
+            params,
+        )
+        conn.commit()
+    return get_project_by_id(project_id)
+
+
+# ── Open Questions ────────────────────────────────────────────────────────────
+
+def insert_question(
+    question: str,
+    domain: str = "",
+    context: str = "",
+    priority: float = 0.5,
+    tags: Optional[list[str]] = None,
+) -> str:
+    question_id = str(uuid.uuid4())
+    now = time.time()
+    with get_connection() as conn:
+        conn.execute(
+            """INSERT INTO open_questions
+               (id, question, domain, context, priority, held_since,
+                resolved, tags)
+               VALUES (?, ?, ?, ?, ?, ?, 0, ?)""",
+            (question_id, question, domain, context,
+             max(0.0, min(1.0, priority)), now, json.dumps(tags or [])),
+        )
+        conn.commit()
+    return question_id
+
+
+def get_questions(resolved: bool = False, limit: int = 50) -> list[dict[str, Any]]:
+    with get_connection() as conn:
+        rows = conn.execute(
+            """SELECT * FROM open_questions
+               WHERE resolved = ? ORDER BY priority DESC, held_since DESC LIMIT ?""",
+            (int(resolved), limit),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def resolve_question(question_id: str, insight: str) -> Optional[dict[str, Any]]:
+    now = time.time()
+    with get_connection() as conn:
+        conn.execute(
+            """UPDATE open_questions
+               SET resolved = 1, resolved_at = ?, resolution_insight = ?
+               WHERE id = ?""",
+            (now, insight, question_id),
+        )
+        conn.commit()
+        row = conn.execute(
+            "SELECT * FROM open_questions WHERE id = ?", (question_id,)
+        ).fetchone()
+    return dict(row) if row else None
+
+
+# ── Execution Logs ────────────────────────────────────────────────────────────
+
+def insert_execution_log(
+    language: str,
+    code_input: str,
+    stdout: str = "",
+    stderr: str = "",
+    exit_code: int = 0,
+    duration_ms: float = 0.0,
+    project_id: Optional[str] = None,
+) -> str:
+    log_id = str(uuid.uuid4())
+    now = time.time()
+    with get_connection() as conn:
+        conn.execute(
+            """INSERT INTO execution_logs
+               (id, language, code_input, stdout, stderr,
+                exit_code, duration_ms, project_id, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (log_id, language, code_input, stdout, stderr,
+             exit_code, duration_ms, project_id, now),
+        )
+        conn.commit()
+    return log_id

@@ -23,3 +23,17 @@ BELIEF_ARCHIVE_THRESHOLD = 0.1
 TENSION_OSCILLATION_MIN = 3
 TENSION_AMPLITUDE_FLAG = 2.0
 HDC_DIMENSION = 10000
+
+# ── Execution sandbox ──────────────────────────────────────────────────────
+RENDERS_DIR = os.path.join(DATA_DIR, "renders")
+EXECUTION_TIMEOUT_DEFAULT = 15  # seconds
+
+# Shell commands that are safe to whitelist
+SHELL_WHITELIST = {
+    "ls", "cat", "head", "tail", "grep", "find", "echo", "pwd", "wc",
+    "du", "df", "date", "uname", "which", "env", "printenv", "sort",
+    "uniq", "cut", "awk", "sed", "tr", "tee", "diff", "md5sum",
+    "sha256sum", "file", "stat", "basename", "dirname",
+}
+
+os.makedirs(RENDERS_DIR, exist_ok=True)

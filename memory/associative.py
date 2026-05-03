@@ -6,7 +6,11 @@ from config import GRAPH_PATH
 
 _graph: nx.DiGraph | None = None
 
-VALID_EDGE_TYPES = {"SUPPORTS", "CONTRADICTS", "ELABORATES", "TRIGGERS"}
+VALID_EDGE_TYPES = {
+    "SUPPORTS", "CONTRADICTS", "ELABORATES", "TRIGGERS",
+    "AUTHORED", "INSPIRED_BY", "QUESTIONS", "RESPONDS_TO",
+    "REFINES", "EXPRESSES",
+}
 
 
 def _load_graph() -> nx.DiGraph:
