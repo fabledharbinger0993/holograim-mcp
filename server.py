@@ -33,6 +33,7 @@ from db.queries import (
     decay_all_beliefs,
     insert_congress_log,
     get_congress_log_by_id,
+    insert_incongruent_pattern,
     memory_count,
     insert_memory_tesseract,
     update_memory_tesseract,
@@ -98,6 +99,47 @@ logger = logging.getLogger("holograim")
 init_db()
 
 mcp = FastMCP("HologrA.I.m")
+
+
+# ── InsightScoringEngine ──────────────────────────────────────────────────────
+
+def _compute_profundity_score(
+    content: str,
+    tags: list[str],
+    flag_important: bool = False,
+) -> float:
+    """Score a memory's epistemic significance on ingestion (0.0–1.0)."""
+    score = 0.0
+    lower = content.lower()
+
+    # Criterion 1: triggers belief revision (+0.30)
+    revision_signals = {"therefore", "thus", "implies", "changes how", "reconsider", "revise"}
+    if any(sig in lower for sig in revision_signals):
+        score += 0.30
+
+    # Criterion 2: connects multiple perspectives (+0.25)
+    congress_voices = {"advocate", "skeptic", "synthesizer", "ethics", "ego", "paradigm"}
+    if sum(1 for v in congress_voices if v in lower) >= 2:
+        score += 0.25
+
+    # Criterion 3: resolves oscillation (+0.20)
+    oscillation_signals = {"tension", "contradiction", "conflict", "oscillat", "resolv"}
+    if any(sig in lower for sig in oscillation_signals):
+        score += 0.20
+
+    # Criterion 4: novelty vs. recent semantic memories (+0.15)
+    try:
+        hits = query_semantic(content, top_k=3)
+        if not hits or hits[0]["similarity_score"] < 0.7:
+            score += 0.15
+    except Exception:
+        score += 0.15  # assume novel if semantic query fails
+
+    # Criterion 5: user-flagged important (+0.10)
+    if flag_important or "important" in tags or "insight" in tags:
+        score += 0.10
+
+    return round(min(1.0, score), 4)
 
 STOPWORDS = {
     "the", "and", "for", "with", "this", "that", "from", "into", "your", "our", "their",
@@ -209,11 +251,12 @@ def store_memory(
     confidence: float,
     source: str,
     tags: list[str] | None = None,
+    flag_important: bool = False,
 ) -> dict:
     """
     Store a memory into all three modalities simultaneously.
     Confidence >= 0.7 required for storage (selective persistence rule).
-    Returns the memory ID and which modalities accepted it.
+    Returns the memory ID, which modalities accepted it, and profundity score.
     """
     if tags is None:
         tags = []
@@ -224,8 +267,10 @@ def store_memory(
             "reason": f"confidence {confidence:.2f} below threshold {MEMORY_PERSISTENCE_THRESHOLD}",
         }
 
+    profundity = _compute_profundity_score(content, tags, flag_important)
+
     # SQLite
-    mem_id = insert_memory(content=content, confidence=confidence, source=source, tags=tags)
+    mem_id = insert_memory(content=content, confidence=confidence, source=source, tags=tags, profundity_score=profundity)
 
     # Semantic (ChromaDB)
     semantic_ok = False
@@ -258,6 +303,7 @@ def store_memory(
         "confidence": confidence,
         "source": source,
         "tags": tags,
+        "profundity_score": profundity,
     }
 
 
@@ -350,9 +396,35 @@ def update_belief(
     """
     Adjust a belief's confidence with a recorded reason.
     Automatically triggers tension analysis and state transitions.
+    Drastic drops (>0.20) without substantive reasoning are flagged and logged.
     """
     if not (0.0 <= new_confidence <= 1.0):
         return {"error": "new_confidence must be between 0.0 and 1.0"}
+
+    existing = get_belief_by_id(belief_id)
+    if not existing:
+        return {"error": f"Belief {belief_id} not found"}
+
+    # Epistemic resistance gate: flag drastic confidence drops without evidence
+    epistemic_warning = None
+    old_confidence = existing.get("confidence", 0.0)
+    drop = old_confidence - new_confidence
+    if drop > 0.20 and len(reason.strip()) < 20:
+        epistemic_warning = (
+            f"Confidence drop of {drop:.2f} detected without substantive reasoning. "
+            "Logging as incongruent pattern. Belief updated but flagged."
+        )
+        try:
+            insert_incongruent_pattern(
+                session_id="update_belief",
+                belief_id=belief_id,
+                query=f"update_belief: {existing.get('stance', '')}",
+                ego_output="",
+                conflict_description=f"Confidence dropped {drop:.2f} (reason: '{reason}')",
+                epistemic_stance="holds_prior",
+            )
+        except Exception as e:
+            logger.warning(f"Epistemic gate log failed: {e}")
 
     updated = update_belief_confidence(belief_id, new_confidence, reason)
     if not updated:
@@ -360,11 +432,14 @@ def update_belief(
 
     tension = analyze_belief_tension(belief_id)
 
-    return {
+    result: dict = {
         "belief": updated,
         "tension_analysis": tension,
         "revision_logged": True,
     }
+    if epistemic_warning:
+        result["epistemic_warning"] = epistemic_warning
+    return result
 
 
 # ── Tool 5: congress_deliberate ───────────────────────────────────────────────

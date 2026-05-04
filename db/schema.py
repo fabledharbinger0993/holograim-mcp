@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS memories (
     source TEXT,
     tags TEXT,
     created_at REAL NOT NULL,
-    reinforcement_count INTEGER DEFAULT 0
+    reinforcement_count INTEGER DEFAULT 0,
+    profundity_score REAL DEFAULT 0.0
 );
 
 CREATE TABLE IF NOT EXISTS congress_logs (
@@ -177,6 +178,33 @@ CREATE TABLE IF NOT EXISTS execution_logs (
     project_id TEXT,
     created_at REAL NOT NULL
 );
+
+-- ── Incongruent Patterns ──────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS incongruent_patterns (
+    id TEXT PRIMARY KEY,
+    session_id TEXT,
+    belief_id TEXT,
+    query TEXT NOT NULL,
+    ego_output TEXT,
+    conflict_description TEXT,
+    epistemic_stance TEXT,
+    created_at REAL NOT NULL,
+    FOREIGN KEY (belief_id) REFERENCES beliefs(id)
+);
+
+-- ── Tribunal Logs ─────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS tribunal_logs (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    query TEXT,
+    skeptic_findings TEXT,
+    advocate_findings TEXT,
+    synthesizer_findings TEXT,
+    severity TEXT,
+    health_score REAL,
+    memory_tags TEXT,
+    created_at REAL NOT NULL
+);
 """
 
 
@@ -192,3 +220,12 @@ def init_db() -> None:
     with get_connection() as conn:
         conn.executescript(SCHEMA_SQL)
         conn.commit()
+        # Additive migrations for existing tables
+        for migration in [
+            "ALTER TABLE memories ADD COLUMN profundity_score REAL DEFAULT 0.0",
+        ]:
+            try:
+                conn.execute(migration)
+                conn.commit()
+            except Exception:
+                pass  # Column already exists

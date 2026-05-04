@@ -18,14 +18,15 @@ def insert_memory(
     confidence: float,
     source: str,
     tags: list[str],
+    profundity_score: float = 0.0,
 ) -> str:
     mem_id = str(uuid.uuid4())
     now = time.time()
     with get_connection() as conn:
         conn.execute(
-            """INSERT INTO memories (id, content, confidence, source, tags, created_at)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (mem_id, content, confidence, source, json.dumps(tags), now),
+            """INSERT INTO memories (id, content, confidence, source, tags, created_at, profundity_score)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (mem_id, content, confidence, source, json.dumps(tags), now, max(0.0, min(1.0, profundity_score))),
         )
         conn.commit()
     return mem_id
@@ -793,3 +794,74 @@ def insert_execution_log(
         )
         conn.commit()
     return log_id
+
+
+# ── Incongruent Patterns ─────────────────────────────────────────────────────
+
+def insert_incongruent_pattern(
+    session_id: str,
+    belief_id: str,
+    query: str,
+    ego_output: str = "",
+    conflict_description: str = "",
+    epistemic_stance: str = "aligned",
+) -> str:
+    pattern_id = str(uuid.uuid4())
+    now = time.time()
+    with get_connection() as conn:
+        conn.execute(
+            """INSERT INTO incongruent_patterns
+               (id, session_id, belief_id, query, ego_output,
+                conflict_description, epistemic_stance, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (pattern_id, session_id, belief_id or None, query,
+             ego_output, conflict_description, epistemic_stance, now),
+        )
+        conn.commit()
+    return pattern_id
+
+
+def get_incongruent_patterns(limit: int = 50) -> list[dict[str, Any]]:
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM incongruent_patterns ORDER BY created_at DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+# ── Tribunal Logs ──────────────────────────────────────────────────────────────
+
+def insert_tribunal_log(
+    session_id: str,
+    query: str = "",
+    skeptic_findings: str = "",
+    advocate_findings: str = "",
+    synthesizer_findings: str = "",
+    severity: str = "low",
+    health_score: float = 0.5,
+    memory_tags: Optional[list[str]] = None,
+) -> str:
+    log_id = str(uuid.uuid4())
+    now = time.time()
+    with get_connection() as conn:
+        conn.execute(
+            """INSERT INTO tribunal_logs
+               (id, session_id, query, skeptic_findings, advocate_findings,
+                synthesizer_findings, severity, health_score, memory_tags, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (log_id, session_id, query, skeptic_findings, advocate_findings,
+             synthesizer_findings, severity, health_score,
+             json.dumps(memory_tags or []), now),
+        )
+        conn.commit()
+    return log_id
+
+
+def get_tribunal_logs(limit: int = 20) -> list[dict[str, Any]]:
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM tribunal_logs ORDER BY created_at DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    return [dict(r) for r in rows]
