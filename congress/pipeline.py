@@ -229,6 +229,10 @@ def run_congress(
         "ethics": (full_context, ETHICS_PROMPT),
     }
     results: dict[str, str] = {}
+    # NOTE: roles are called sequentially.  With a local Ollama backend this is
+    # acceptable because qwen2.5:3b is single-threaded anyway.  When moving to a
+    # faster or remote backend, replace this loop with asyncio.gather() over
+    # async-wrapped _call_with_fallback calls to run all four roles in parallel.
     for role, (role_prompt, system_prompt) in roles.items():
         try:
             results[role] = _call_with_fallback(role_prompt, system_prompt, model)

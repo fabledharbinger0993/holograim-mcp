@@ -18,7 +18,7 @@ python server.py
 
 ## Claude Desktop Configuration
 
-Add to `~/.config/claude/claude_desktop_config.json` (macOS):
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS):
 
 ```json
 {
@@ -26,7 +26,7 @@ Add to `~/.config/claude/claude_desktop_config.json` (macOS):
     "holograim": {
       "command": "python3",
       "args": [
-        "/Users/cameronkelly/FABLEDHARBINGER/GIT_REPOS/HologrAIm/mcp_server/server.py"
+        "/Volumes/DJMT/FABLEDHARBINGER/GIT_REPOS/Holograim-mcp/holograim-mcp/server.py"
       ],
       "env": {}
     }

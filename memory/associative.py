@@ -25,6 +25,11 @@ def _load_graph() -> nx.DiGraph:
 
 
 def _save_graph() -> None:
+    # NOTE: pickle is fast and dependency-free but is fragile across Python major
+    # versions and not human-inspectable.  Plan migration to GraphML or GEXF
+    # (networkx.write_graphml / write_gexf) before the graph exceeds ~10k nodes
+    # or before upgrading past the current Python minor version.  The graph file
+    # at GRAPH_PATH must be regenerated from source data after any such migration.
     g = _load_graph()
     with open(GRAPH_PATH, "wb") as f:
         pickle.dump(g, f, protocol=pickle.HIGHEST_PROTOCOL)

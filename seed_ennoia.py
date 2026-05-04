@@ -121,6 +121,13 @@ print("── Seeding beliefs …")
 
 # Skip if already seeded
 existing_beliefs = get_beliefs()
+# Dedup is string-exact on the stance text.  A single whitespace or punctuation
+# change will bypass the check and create a near-duplicate belief.  If stricter
+# idempotency is needed, replace this with a normalised hash:
+#   import hashlib, re
+#   def _stance_hash(s): return hashlib.sha1(re.sub(r'\s+', ' ', s.strip().lower()).encode()).hexdigest()
+#   existing_stances = {_stance_hash(b.get('stance','')) for b in existing_beliefs}
+# and compare _stance_hash(b['stance']) below.
 existing_stances = {b.get("stance", "") for b in existing_beliefs}
 
 BELIEFS = [
