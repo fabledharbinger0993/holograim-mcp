@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS memories (
     source TEXT,
     tags TEXT,
     created_at REAL NOT NULL,
-    reinforcement_count INTEGER DEFAULT 0
+    reinforcement_count INTEGER DEFAULT 0,
+    profundity_score REAL DEFAULT 0.0
 );
 
 CREATE TABLE IF NOT EXISTS congress_logs (
@@ -94,6 +95,116 @@ CREATE INDEX IF NOT EXISTS idx_memory_tesseract_links_tesseract
 
 CREATE INDEX IF NOT EXISTS idx_memory_tesseract_links_target
     ON memory_tesseract_links(target_type, target_id);
+
+-- ── Identity / Self-Model ──────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS identity_state (
+    id TEXT PRIMARY KEY,
+    agent_name TEXT NOT NULL DEFAULT 'Holograim',
+    voice_signature TEXT,
+    aesthetic_notes TEXT,
+    values_json TEXT,
+    creative_style TEXT,
+    session_count INTEGER DEFAULT 0,
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL
+);
+
+-- ── Creative Fragments ────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS creative_fragments (
+    id TEXT PRIMARY KEY,
+    project_id TEXT,
+    fragment_type TEXT NOT NULL CHECK (
+        fragment_type IN ('prose','code','structure','question',
+                          'aesthetic_note','design_decision','observation')
+    ),
+    language TEXT,
+    content TEXT NOT NULL,
+    title TEXT,
+    tags TEXT,
+    author TEXT NOT NULL DEFAULT 'ai' CHECK (author IN ('human','ai','joint')),
+    memory_id TEXT,
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_creative_fragments_project
+    ON creative_fragments(project_id);
+
+CREATE INDEX IF NOT EXISTS idx_creative_fragments_type
+    ON creative_fragments(fragment_type);
+
+-- ── Projects ──────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS projects (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT,
+    status TEXT NOT NULL DEFAULT 'active' CHECK (
+        status IN ('active','paused','archived')
+    ),
+    intent TEXT,
+    aesthetic_direction TEXT,
+    human_owner TEXT,
+    ai_voice_notes TEXT,
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL
+);
+
+-- ── Open Questions ────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS open_questions (
+    id TEXT PRIMARY KEY,
+    question TEXT NOT NULL,
+    domain TEXT,
+    context TEXT,
+    priority REAL DEFAULT 0.5,
+    held_since REAL NOT NULL,
+    resolved INTEGER DEFAULT 0,
+    resolved_at REAL,
+    resolution_insight TEXT,
+    tags TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_open_questions_resolved
+    ON open_questions(resolved, held_since DESC);
+
+-- ── Execution Logs ────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS execution_logs (
+    id TEXT PRIMARY KEY,
+    language TEXT NOT NULL,
+    code_input TEXT NOT NULL,
+    stdout TEXT,
+    stderr TEXT,
+    exit_code INTEGER,
+    duration_ms REAL,
+    project_id TEXT,
+    created_at REAL NOT NULL
+);
+
+-- ── Incongruent Patterns ──────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS incongruent_patterns (
+    id TEXT PRIMARY KEY,
+    session_id TEXT,
+    belief_id TEXT,
+    query TEXT NOT NULL,
+    ego_output TEXT,
+    conflict_description TEXT,
+    epistemic_stance TEXT,
+    created_at REAL NOT NULL,
+    FOREIGN KEY (belief_id) REFERENCES beliefs(id)
+);
+
+-- ── Tribunal Logs ─────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS tribunal_logs (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    query TEXT,
+    skeptic_findings TEXT,
+    advocate_findings TEXT,
+    synthesizer_findings TEXT,
+    severity TEXT,
+    health_score REAL,
+    memory_tags TEXT,
+    created_at REAL NOT NULL
+);
 """
 
 
@@ -109,3 +220,12 @@ def init_db() -> None:
     with get_connection() as conn:
         conn.executescript(SCHEMA_SQL)
         conn.commit()
+        # Additive migrations for existing tables
+        for migration in [
+            "ALTER TABLE memories ADD COLUMN profundity_score REAL DEFAULT 0.0",
+        ]:
+            try:
+                conn.execute(migration)
+                conn.commit()
+            except Exception:
+                pass  # Column already exists

@@ -76,10 +76,22 @@ def add_to_holographic(mem_id: str, content: str) -> bool:
 
 def query_holographic(query: str, top_k: int = 5) -> list[dict[str, Any]]:
     """
-    Query the holographic composite by probing with query vector.
-    Returns similarity scores — useful as a re-ranking signal.
-    Note: without a stored ID registry, we return the raw composite similarity
-    as a single aggregate score.
+    Query the holographic composite by probing with a query hypervector.
+
+    IMPORTANT — superposition limitation: the composite is the *additive sum* of
+    all bound memory vectors.  Superposition makes it impossible to reverse-lookup
+    individual memory contributions from the composite alone — that would require
+    storing a per-memory ID registry and re-encoding each item at query time, which
+    defeats the O(1) query benefit of HDC.
+
+    What this function returns is therefore a *single aggregate score*: how similar
+    the query vector is to the entire composite.  Treat it as a coarse re-ranking
+    weight to modulate results from semantic or structured retrieval, not as a
+    standalone retrieval signal.  Do not expect or parse per-item scores from the
+    return value.
+
+    Future: maintain a List[(memory_id, bound_vector)] registry in memory to enable
+    approximate per-item unbinding when a faster backend (GPU/FPGA) is available.
     """
     try:
         composite = _load_composite()

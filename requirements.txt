@@ -1,4 +1,20 @@
+# Core MCP / memory stack
 fastmcp
 chromadb
 networkx
 numpy
+
+# Web / HTTP (future tool expansion; already used by chromadb internally)
+requests
+
+# Sentence-level semantic analysis (future: richer memory clustering)
+# sentence-transformers  # uncomment to enable local embedding model
+
+# HTML parsing / generation utilities
+# beautifulsoup4  # uncomment if HTML scraping tools are added
+
+# Data science (available for run_python_tool sandboxed execution)
+# pandas         # install in target conda env or globally as needed
+# matplotlib
+# scipy
+
