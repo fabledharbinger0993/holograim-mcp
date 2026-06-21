@@ -100,6 +100,107 @@ init_db()
 
 mcp = FastMCP("HologrA.I.m")
 
+STOPWORDS = {
+    "the", "and", "for", "with", "this", "that", "from", "into", "your", "our", "their",
+    "are", "was", "were", "have", "has", "had", "will", "would", "should", "could",
+    "about", "over", "under", "after", "before", "than", "then", "when", "where", "which",
+    "what", "why", "how", "also", "just", "very", "more", "less", "much", "many",
+    "task", "tasks", "prompt", "prompts", "memory", "memories",
+}
+
+TESSERACT_TARGET_TYPES = {"memory", "belief", "congress_log", "concept", "tension"}
+
+TESSERACT_ROUTE_WEIGHTS = {
+    "option_a": {"semantic": 0.5, "relational": 0.1, "temporal": 0.1, "epistemic": 0.3},
+    "option_b": {"semantic": 0.2, "relational": 0.5, "temporal": 0.2, "epistemic": 0.1},
+    "option_c": {"semantic": 0.3, "relational": 0.3, "temporal": 0.2, "epistemic": 0.2},
+}
+
+
+def _tokenize_text(text: str) -> set[str]:
+    if not text:
+        return set()
+    tokens = re.findall(r"[a-zA-Z0-9_]+", text.lower())
+    return {t for t in tokens if len(t) > 2 and t not in STOPWORDS}
+
+
+def _safe_float(value: object, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except Exception:
+        return default
+
+
+def _clamp_01(value: float) -> float:
+    return max(0.0, min(1.0, value))
+
+
+def _parse_json_list(value: object) -> list[str]:
+    if isinstance(value, list):
+        return [str(v).strip().lower() for v in value if str(v).strip()]
+    if isinstance(value, str) and value.strip():
+        try:
+            parsed = json.loads(value)
+            if isinstance(parsed, list):
+                return [str(v).strip().lower() for v in parsed if str(v).strip()]
+        except Exception:
+            return []
+    return []
+
+
+def _parse_json_dict(value: object) -> dict:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str) and value.strip():
+        try:
+            parsed = json.loads(value)
+            if isinstance(parsed, dict):
+                return parsed
+        except Exception:
+            return {}
+    return {}
+
+
+def _overlap_ratio(query_terms: set[str], candidate_terms: set[str]) -> float:
+    if not query_terms or not candidate_terms:
+        return 0.0
+    return len(query_terms & candidate_terms) / max(1, len(query_terms))
+
+
+def _hydrate_tesseract(row: dict) -> dict:
+    hydrated = dict(row)
+    hydrated["cue_terms"] = _parse_json_list(hydrated.get("cue_terms"))
+    hydrated["metadata"] = _parse_json_dict(hydrated.get("metadata"))
+    hydrated["semantic_axis"] = _clamp_01(_safe_float(hydrated.get("semantic_axis"), 0.5))
+    hydrated["relational_axis"] = _clamp_01(_safe_float(hydrated.get("relational_axis"), 0.5))
+    hydrated["temporal_axis"] = _clamp_01(_safe_float(hydrated.get("temporal_axis"), 0.5))
+    hydrated["epistemic_axis"] = _clamp_01(_safe_float(hydrated.get("epistemic_axis"), 0.5))
+    return hydrated
+
+
+def _route_projection_score(tesseract: dict, route: str) -> float:
+    weights = TESSERACT_ROUTE_WEIGHTS.get(route, TESSERACT_ROUTE_WEIGHTS["option_b"])
+    return (
+        weights["semantic"] * _safe_float(tesseract.get("semantic_axis"), 0.0)
+        + weights["relational"] * _safe_float(tesseract.get("relational_axis"), 0.0)
+        + weights["temporal"] * _safe_float(tesseract.get("temporal_axis"), 0.0)
+        + weights["epistemic"] * _safe_float(tesseract.get("epistemic_axis"), 0.0)
+    )
+
+
+def _is_valid_tesseract_target(target_type: str, target_id: str) -> bool:
+    if target_type == "memory":
+        return get_memory_by_id(target_id) is not None
+    if target_type == "belief":
+        return get_belief_by_id(target_id) is not None
+    if target_type == "congress_log":
+        return get_congress_log_by_id(target_id) is not None
+    if target_type == "tension":
+        return get_tension_by_id(target_id) is not None
+    if target_type == "concept":
+        return bool(get_neighbors(concept=target_id, depth=1).get("found"))
+    return False
+
 
 # ── InsightScoringEngine ──────────────────────────────────────────────────────
 
