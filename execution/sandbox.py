@@ -327,11 +327,15 @@ def query_db(sql: str, params: Optional[list] = None) -> dict:
             "error": "Only SELECT statements are permitted in query_db.",
             "rows": [],
         }
-    from db.schema import get_connection
     try:
-        with get_connection() as conn:
-            conn.row_factory = __import__("sqlite3").Row
+        import sqlite3
+        from config import DB_PATH
+        conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
+        conn.row_factory = sqlite3.Row
+        try:
             rows = conn.execute(sql, params or []).fetchall()
+        finally:
+            conn.close()
         return {"rows": [dict(r) for r in rows], "count": len(rows)}
     except Exception as e:
         return {"error": str(e), "rows": []}

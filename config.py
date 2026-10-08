@@ -1,7 +1,7 @@
 import os
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(BASE_DIR, "data")
+DATA_DIR = os.environ.get("HOLOGRAIM_DATA_DIR") or os.path.join(BASE_DIR, "data")
 
 os.makedirs(DATA_DIR, exist_ok=True)
 
@@ -37,3 +37,14 @@ SHELL_WHITELIST = {
 }
 
 os.makedirs(RENDERS_DIR, exist_ok=True)
+
+# ── Measured values ────────────────────────────────────────────────────────
+# Dispositions are AI-adjustable within these bounds. Anchors are human-only.
+VALUE_MAX_STEP = 0.05                # largest single adjustment to one weight
+VALUE_MAX_CHANGES_PER_SESSION = 3    # applied changes allowed per session
+VALUE_DRIFT_THRESHOLD = 0.20         # |weight - baseline| beyond this needs human sign-off
+VALUE_NEW_MAX_WEIGHT = 0.20          # starting weight cap for a newly introduced value
+VALUE_MIN_REASONING_CHARS = 40
+
+# Execution tools (run_python/shell/swift/java/conda) are off unless opted in.
+EXECUTION_ENABLED = os.environ.get("HOLOGRAIM_ENABLE_EXECUTION") == "1"

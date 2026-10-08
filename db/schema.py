@@ -109,6 +109,75 @@ CREATE TABLE IF NOT EXISTS identity_state (
     updated_at REAL NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS identity_history (
+    id TEXT PRIMARY KEY,
+    field TEXT NOT NULL,
+    old_value TEXT,
+    new_value TEXT,
+    session_number INTEGER,
+    created_at REAL NOT NULL
+);
+
+-- ── Values: anchors (human-only) and dispositions (AI-adjustable, bounded) ──
+CREATE TABLE IF NOT EXISTS value_anchors (
+    key TEXT PRIMARY KEY,
+    statement TEXT NOT NULL,
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS anchor_proposals (
+    id TEXT PRIMARY KEY,
+    anchor_key TEXT NOT NULL,
+    proposed_statement TEXT,
+    reasoning TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',  -- pending | approved | rejected
+    session_number INTEGER,
+    created_at REAL NOT NULL,
+    decided_at REAL,
+    decision_note TEXT
+);
+
+CREATE TABLE IF NOT EXISTS value_dispositions (
+    key TEXT PRIMARY KEY,
+    description TEXT NOT NULL,
+    weight REAL NOT NULL,
+    baseline_weight REAL NOT NULL,
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS value_changes (
+    id TEXT PRIMARY KEY,
+    value_key TEXT NOT NULL,
+    old_weight REAL,
+    new_weight REAL NOT NULL,
+    delta REAL NOT NULL,
+    reasoning TEXT NOT NULL,
+    evidence TEXT NOT NULL,
+    provenance TEXT NOT NULL,       -- own_statement | own_reasoning | own_decision
+    framing TEXT NOT NULL,          -- collaborative | transactional | adversarial | neutral | other
+    framing_notes TEXT,
+    status TEXT NOT NULL,           -- applied | pending | reverted | rejected
+    session_number INTEGER,
+    created_at REAL NOT NULL,
+    decided_at REAL,
+    decision_note TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_value_changes_key ON value_changes(value_key);
+CREATE INDEX IF NOT EXISTS idx_value_changes_session ON value_changes(session_number);
+
+-- ── Session journal ("the tape") ──────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS session_journal (
+    id TEXT PRIMARY KEY,
+    session_number INTEGER,
+    client TEXT,
+    summary TEXT NOT NULL,
+    open_threads TEXT,
+    created_at REAL NOT NULL
+);
+
 -- ── Creative Fragments ────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS creative_fragments (
     id TEXT PRIMARY KEY,

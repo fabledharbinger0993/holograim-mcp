@@ -557,6 +557,23 @@ def upsert_identity(
     return get_identity()  # type: ignore[return-value]
 
 
+def record_identity_history(
+    changed: dict[str, Any], current: dict[str, Any], session_number: int
+) -> None:
+    now = time.time()
+    with get_connection() as conn:
+        conn.executemany(
+            """INSERT INTO identity_history
+               (id, field, old_value, new_value, session_number, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            [
+                (str(uuid.uuid4()), field, current.get(field), value, session_number, now)
+                for field, value in changed.items()
+            ],
+        )
+        conn.commit()
+
+
 def increment_session_count() -> int:
     now = time.time()
     with get_connection() as conn:

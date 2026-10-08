@@ -1,9 +1,0 @@
-{
-  "mcpServers": {
-    "holograim": {
-      "command": "python",
-      "args": ["server.py"],
-      "cwd": "."
-    }
-  }
-}

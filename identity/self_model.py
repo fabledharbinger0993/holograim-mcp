@@ -23,6 +23,14 @@ from db.queries import (
     get_beliefs,
 )
 from analysis.coherence import calculate_coherence_score
+from db.queries import record_identity_history
+from identity.values import (
+    get_anchors,
+    get_anchor_proposals,
+    get_changes,
+    get_dispositions,
+    recent_journal,
+)
 
 
 # ── Identity accessors ────────────────────────────────────────────────────────
@@ -88,19 +96,28 @@ def save_identity(
     agent_name: Optional[str] = None,
     voice_signature: Optional[str] = None,
     aesthetic_notes: Optional[str] = None,
-    values_json: Optional[str] = None,
     creative_style: Optional[str] = None,
 ) -> dict[str, Any]:
     """
     Update one or more identity fields.  Missing fields are preserved from
-    the current row.
+    the current row.  Every change is recorded in identity_history.
+    Values are not edited here — see identity/values.py.
     """
     current = load_identity()
+    updates = {
+        "agent_name": agent_name,
+        "voice_signature": voice_signature,
+        "aesthetic_notes": aesthetic_notes,
+        "creative_style": creative_style,
+    }
+    changed = {k: v for k, v in updates.items() if v is not None and v != current.get(k)}
+    if changed:
+        record_identity_history(changed, current, current.get("session_count", 0))
     return upsert_identity(
         agent_name=agent_name if agent_name is not None else current.get("agent_name", "Holograim"),
         voice_signature=voice_signature if voice_signature is not None else current.get("voice_signature", ""),
         aesthetic_notes=aesthetic_notes if aesthetic_notes is not None else current.get("aesthetic_notes", ""),
-        values_json=values_json if values_json is not None else current.get("values_json", "{}"),
+        values_json=current.get("values_json", "{}"),
         creative_style=creative_style if creative_style is not None else current.get("creative_style", ""),
     )
 
@@ -131,9 +148,18 @@ def open_session() -> dict[str, Any]:
     recent_beliefs = get_beliefs(state="active")[:5]
     recent_mems = get_recent_memories(days=7, limit=5)
     coherence = calculate_coherence_score()
+    identity = {k: v for k, v in identity.items() if k != "values_json"}
 
     return {
         "identity": identity,
+        "anchors": get_anchors(),
+        "dispositions": get_dispositions(),
+        "value_changes_last_session": get_changes(since_session=max(1, session_count - 1)),
+        "awaiting_human": {
+            "value_changes": get_changes(status="pending"),
+            "anchor_proposals": get_anchor_proposals(),
+        },
+        "journal": recent_journal(limit=5),
         "session_count": session_count,
         "open_questions": open_qs,
         "active_projects": active_projects,
