@@ -71,6 +71,20 @@ full permissions and register only when `HOLOGRAIM_ENABLE_EXECUTION=1`.
 - `creative/` — fragment composition and project management
 - `docs/` — Sovern iOS app design docs (Swift reference architecture)
 
+### Reproducible environment
+
+`requirements.txt` is unpinned, so a fresh install can pull newer, incompatible releases. A known-good set
+(2026-11-01, Python 3.12): fastmcp 4.0.11, mcp 2.3.0, chromadb 1.5.9, numpy 2.5.3, networkx 3.7.
+To rebuild a working venv without upgrading anything, freeze it first and install from the freeze:
+
+```bash
+uv pip freeze --python .venv/bin/python > /tmp/holograim-freeze.txt
+mv .venv .venv.old
+uv venv .venv --python 3.12 && VIRTUAL_ENV=$PWD/.venv uv pip install -r /tmp/holograim-freeze.txt
+```
+
+Keep the venv at `.venv`: the Claude Code MCP entry and the SessionStart hook call `.venv/bin/python`.
+
 ## Dependencies
 
 Python 3.10+. Requires Ollama running locally for Congress deliberation tools.
@@ -78,6 +92,11 @@ Default model: `qwen2.5:3b` with `llama3.2:1b` fallback.
 Memory/belief tools work without Ollama.
 
 ## Testing
+
+Every entry point (server, tests, `wakeup_brief.py`) finds its data through `config.py`, which honours
+`HOLOGRAIM_DATA_DIR`. The tests set it to a temp folder, so they never touch `data/`. Running
+`wakeup_brief.py` or the server by hand writes to the live store in `data/`; for experiments, point
+`HOLOGRAIM_DATA_DIR` at a temp folder.
 
 ```bash
 python -m pytest tests -q
